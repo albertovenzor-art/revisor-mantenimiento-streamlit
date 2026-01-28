@@ -1,6 +1,7 @@
 import streamlit as st
 import google.generativeai as genai
 import PyPDF2
+import textwrap
 
 # ==================================================
 # CONFIGURACIÓN DE LA PÁGINA
@@ -21,24 +22,15 @@ genai.configure(api_key=st.secrets["GEMINI_KEY"])
 SYSTEM_PROMPT = """
 Eres un Revisor Académico de Mantenimiento Industrial.
 
-Evalúa el contenido del reporte técnico y entrega OBLIGATORIAMENTE:
-
-1. Tabla de evidencias en formato Markdown con columnas:
-   - Criterio
-   - Evidencia encontrada
-   - Nivel (Insuficiente / Básico / Adecuado / Avanzado)
-
-2. Observaciones técnicas claras y profesionales.
-
-3. Calificación final numérica de 0 a 100.
-
-4. Recomendaciones concretas para mejorar el reporte.
-
-Sé técnico, objetivo y directo. No inventes información.
+Evalúa el reporte técnico y entrega:
+1. Tabla de evidencias (Markdown)
+2. Observaciones técnicas
+3. Calificación (0–100)
+4. Recomendaciones claras
 """
 
 # ==================================================
-# FUNCIÓN PARA EXTRAER TEXTO DEL PDF
+# FUNCIÓN: EXTRAER TEXTO DEL PDF
 # ==================================================
 def extraer_texto_pdf(archivo_pdf):
     lector = PyPDF2.PdfReader(archivo_pdf)
@@ -47,7 +39,7 @@ def extraer_texto_pdf(archivo_pdf):
         contenido = pagina.extract_text()
         if contenido:
             texto += contenido + "\n"
-    return texto
+    return texto.strip()
 
 # ==================================================
 # INTERFAZ
@@ -57,34 +49,49 @@ uploaded_file = st.file_uploader(
     type=["pdf"]
 )
 
-if uploaded_file:
+# Estado para evitar re-ejecución
+if "evaluado" not in st.session_state:
+    st.session_state.evaluado = False
+
+if uploaded_file and not st.session_state.evaluado:
     if st.button("Iniciar Evaluación"):
         try:
-            with st.spinner("Analizando el reporte técnico..."):
+            st.session_state.evaluado = True
 
-                texto_pdf = extraer_texto_pdf(uploaded_file)
+            st.info("📄 Extrayendo texto del PDF...")
+            texto_pdf = extraer_texto_pdf(uploaded_file)
 
-                if texto_pdf.strip() == "":
-                    st.error("El PDF no contiene texto legible (posiblemente es un escaneo).")
-                else:
-                    model = genai.GenerativeModel(
-                        model_name="gemini-pro",
-                        system_instruction=SYSTEM_PROMPT
-                    )
+            if texto_pdf == "":
+                st.error("El PDF no contiene texto legible (es un escaneo).")
+                st.stop()
 
-                    prompt = f"""
-                    TEXTO DEL REPORTE:
-                    ------------------
-                    {texto_pdf}
-                    ------------------
+            # 🔒 LIMITAR TEXTO (CRÍTICO)
+            MAX_CHARS = 12000
+            texto_pdf = texto_pdf[:MAX_CHARS]
 
-                    Realiza la evaluación conforme a tu rol.
-                    """
+            st.info("🤖 Enviando texto a Gemini (análisis en curso)...")
 
-                    response = model.generate_content(prompt)
+            model = genai.GenerativeModel(
+                model_name="gemini-pro",
+                system_instruction=SYSTEM_PROMPT
+            )
 
-                    st.success("Evaluación completada")
-                    st.markdown(response.text)
+            prompt = textwrap.dedent(f"""
+            TEXTO DEL REPORTE:
+            ------------------
+            {texto_pdf}
+            ------------------
+
+            Realiza la evaluación completa.
+            """)
+
+            response = model.generate_content(
+                prompt,
+                request_options={"timeout": 60}  # ⏱️ evita cuelgues
+            )
+
+            st.success("✅ Evaluación completada")
+            st.markdown(response.text)
 
         except Exception as e:
             st.error(f"Error durante la evaluación: {e}")
