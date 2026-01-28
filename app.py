@@ -25,8 +25,6 @@ Evalúa el PDF y entrega:
 2. Observaciones técnicas
 3. Calificación estimada (0–100)
 4. Recomendaciones claras y accionables
-
-Sé técnico, directo y sin relleno.
 """
 
 # --------------------------------------------------
@@ -61,3 +59,6 @@ if uploaded_file:
 
                 st.success("Evaluación completada")
                 st.markdown(response.text)
+
+        except Exception as e:
+            st.error(f"Error detectado: {e}")
