@@ -42,6 +42,16 @@ def extraer_texto_pdf(archivo_pdf):
     return texto.strip()
 
 # ==================================================
+# FUNCIÓN: OBTENER MODELO DISPONIBLE
+# ==================================================
+def obtener_modelo_disponible():
+    modelos = genai.list_models()
+    for m in modelos:
+        if "generateContent" in m.supported_generation_methods:
+            return m.name
+    return None
+
+# ==================================================
 # INTERFAZ
 # ==================================================
 uploaded_file = st.file_uploader(
@@ -49,51 +59,49 @@ uploaded_file = st.file_uploader(
     type=["pdf"]
 )
 
-# Estado para evitar re-ejecución
-if "evaluado" not in st.session_state:
-    st.session_state.evaluado = False
-
-if uploaded_file and not st.session_state.evaluado:
+if uploaded_file:
     if st.button("Iniciar Evaluación"):
         try:
-            st.session_state.evaluado = True
+            with st.spinner("Preparando evaluación..."):
 
-            st.info("📄 Extrayendo texto del PDF...")
-            texto_pdf = extraer_texto_pdf(uploaded_file)
+                texto_pdf = extraer_texto_pdf(uploaded_file)
+                if texto_pdf == "":
+                    st.error("El PDF no contiene texto legible (es un escaneo).")
+                    st.stop()
 
-            if texto_pdf == "":
-                st.error("El PDF no contiene texto legible (es un escaneo).")
-                st.stop()
+                texto_pdf = texto_pdf[:12000]  # límite seguro
 
-            # 🔒 LIMITAR TEXTO (CRÍTICO)
-            MAX_CHARS = 12000
-            texto_pdf = texto_pdf[:MAX_CHARS]
+                modelo_nombre = obtener_modelo_disponible()
+                if not modelo_nombre:
+                    st.error(
+                        "❌ Tu API Key no tiene acceso a modelos generativos de Gemini.\n\n"
+                        "Verifica que la key sea de **Google AI Studio** con Gemini habilitado."
+                    )
+                    st.stop()
 
-            st.info("🤖 Enviando texto a Gemini (análisis en curso)...")
+                st.info(f"🤖 Usando modelo disponible: `{modelo_nombre}`")
 
-            model = genai.GenerativeModel(
-                model_name="gemini-pro",
-                system_instruction=SYSTEM_PROMPT
-            )
+                model = genai.GenerativeModel(
+                    model_name=modelo_nombre,
+                    system_instruction=SYSTEM_PROMPT
+                )
 
-            prompt = textwrap.dedent(f"""
-            TEXTO DEL REPORTE:
-            ------------------
-            {texto_pdf}
-            ------------------
+                prompt = textwrap.dedent(f"""
+                TEXTO DEL REPORTE:
+                ------------------
+                {texto_pdf}
+                ------------------
 
-            Realiza la evaluación completa.
-            """)
+                Realiza la evaluación completa.
+                """)
 
-            response = model.generate_content(
-                prompt,
-                request_options={"timeout": 60}  # ⏱️ evita cuelgues
-            )
+                response = model.generate_content(
+                    prompt,
+                    request_options={"timeout": 60}
+                )
 
-            st.success("✅ Evaluación completada")
-            st.markdown(response.text)
+                st.success("✅ Evaluación completada")
+                st.markdown(response.text)
 
         except Exception as e:
             st.error(f"Error durante la evaluación: {e}")
-
-
