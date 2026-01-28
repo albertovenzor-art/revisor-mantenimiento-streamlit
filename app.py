@@ -2,67 +2,94 @@ import streamlit as st
 import google.generativeai as genai
 import PyPDF2
 
-# --------------------------------------------------
-# CONFIGURACIÓN DE LA PÁGINA
-# --------------------------------------------------
+# ==================================================
+# CONFIGURACIÓN DE LA PÁGINA (DEBE IR AL INICIO)
+# ==================================================
 st.set_page_config(
-    page_title="Revisor Mantenimiento",
-    page_icon="🛠️"
+    page_title="Revisor Académico de Mantenimiento",
+    page_icon="🛠️",
+    layout="centered"
 )
 
 st.title("🛠️ Revisor Académico de Mantenimiento")
 
-# --------------------------------------------------
+# ==================================================
 # CONEXIÓN CON GEMINI
-# --------------------------------------------------
+# ==================================================
+# La API Key se toma desde Streamlit Secrets
 genai.configure(api_key=st.secrets["GEMINI_KEY"])
 
 SYSTEM_PROMPT = """
 Eres un Revisor Académico de Mantenimiento Industrial.
 
-Evalúa el texto del reporte y entrega:
-1. Tabla de evidencias (criterio | evidencia | nivel)
-2. Observaciones técnicas
-3. Calificación estimada (0–100)
-4. Recomendaciones claras y accionables
+Evalúa el contenido del reporte técnico y entrega OBLIGATORIAMENTE:
+
+1. Tabla de evidencias en formato Markdown con columnas:
+   - Criterio
+   - Evidencia encontrada
+   - Nivel (Insuficiente / Básico / Adecuado / Avanzado)
+
+2. Observaciones técnicas claras y profesionales.
+
+3. Calificación final numérica de 0 a 100.
+
+4. Recomendaciones concretas para mejorar el reporte.
+
+Sé técnico, objetivo y directo. No inventes información.
 """
 
-# --------------------------------------------------
-# FUNCIÓN PARA EXTRAER TEXTO DEL PDF
-# --------------------------------------------------
-def extract_text_from_pdf(file):
-    reader = PyPDF2.PdfReader(file)
-    text = ""
-    for page in reader.pages:
-        text += page.extract_text() or ""
-    return text
+# ==================================================
+# FUNCIÓN: EXTRAER TEXTO DEL PDF
+# ==================================================
+def extraer_texto_pdf(archivo_pdf):
+    lector = PyPDF2.PdfReader(archivo_pdf)
+    texto = ""
+    for pagina in lector.pages:
+        texto_pagina = pagina.extract_text()
+        if texto_pagina:
+            texto += texto_pagina + "\n"
+    return texto
 
-# --------------------------------------------------
-# INTERFAZ
-# --------------------------------------------------
+# ==================================================
+# INTERFAZ DE USUARIO
+# ==================================================
 uploaded_file = st.file_uploader(
-    "Cargar Reporte (PDF)",
+    "Cargar Reporte Técnico (PDF)",
     type=["pdf"]
 )
 
-if uploaded_file:
+if uploaded_file is not None:
     if st.button("Iniciar Evaluación"):
         try:
-            with st.spinner("Analizando documento..."):
+            with st.spinner("Analizando el reporte técnico..."):
 
-                pdf_text = extract_text_from_pdf(uploaded_file)
+                # Extraer texto del PDF
+                texto_pdf = extraer_texto_pdf(uploaded_file)
 
-                model = genai.GenerativeModel(
-                    model_name="models/gemini-1.5-flash",
-                    system_instruction=SYSTEM_PROMPT
-                )
+                if texto_pdf.strip() == "":
+                    st.error("El PDF no contiene texto legible (posiblemente es un escaneo).")
+                else:
+                    # Modelo ESTABLE y DISPONIBLE
+                    model = genai.GenerativeModel(
+                        model_name="models/gemini-1.0-pro",
+                        system_instruction=SYSTEM_PROMPT
+                    )
 
-                response = model.generate_content(
-                    f"Texto del reporte:\n\n{pdf_text}\n\nEvalúa conforme a criterios de mantenimiento."
-                )
+                    prompt_usuario = f"""
+                    A continuación se muestra el texto completo del reporte técnico:
 
-                st.success("Evaluación completada")
-                st.markdown(response.text)
+                    ---------------------
+                    {texto_pdf}
+                    ---------------------
+
+                    Realiza la evaluación conforme a tu rol.
+                    """
+
+                    response = model.generate_content(prompt_usuario)
+
+                    st.success("Evaluación completada")
+                    st.markdown(response.text)
 
         except Exception as e:
-            st.error(f"Error detectado: {e}")
+            st.error(f"Error durante la evaluación: {e}")
+
