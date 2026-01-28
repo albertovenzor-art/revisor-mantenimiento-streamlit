@@ -19,18 +19,38 @@ st.title("🛠️ Revisor Académico de Mantenimiento")
 # ==================================================
 genai.configure(api_key=st.secrets["GEMINI_KEY"])
 
-SYSTEM_PROMPT = """
+# ==================================================
+# PROMPTS
+# ==================================================
+PROMPT_RESUMEN = """
+Eres un ingeniero especialista en mantenimiento industrial.
+Resume técnicamente el siguiente reporte en máximo 800 palabras.
+Incluye:
+- Objetivo
+- Metodología
+- Hallazgos técnicos
+- Conclusiones
+"""
+
+PROMPT_EVALUACION = """
 Eres un Revisor Académico de Mantenimiento Industrial.
 
-Evalúa el reporte técnico y entrega:
-1. Tabla de evidencias (Markdown)
+Con base EXCLUSIVA en el resumen técnico proporcionado, entrega:
+
+1. Tabla de evidencias (Markdown):
+   Criterio | Evidencia | Nivel
+
 2. Observaciones técnicas
-3. Calificación (0–100)
+
+3. Calificación final (0–100)
+
 4. Recomendaciones claras
+
+Sé técnico, directo y objetivo.
 """
 
 # ==================================================
-# FUNCIÓN: EXTRAER TEXTO DEL PDF
+# FUNCIONES
 # ==================================================
 def extraer_texto_pdf(archivo_pdf):
     lector = PyPDF2.PdfReader(archivo_pdf)
@@ -41,10 +61,7 @@ def extraer_texto_pdf(archivo_pdf):
             texto += contenido + "\n"
     return texto.strip()
 
-# ==================================================
-# FUNCIÓN: OBTENER MODELO DISPONIBLE
-# ==================================================
-def obtener_modelo_disponible():
+def obtener_modelo():
     modelos = genai.list_models()
     for m in modelos:
         if "generateContent" in m.supported_generation_methods:
@@ -62,46 +79,52 @@ uploaded_file = st.file_uploader(
 if uploaded_file:
     if st.button("Iniciar Evaluación"):
         try:
-            with st.spinner("Preparando evaluación..."):
+            st.info("📄 Extrayendo texto del PDF...")
+            texto_pdf = extraer_texto_pdf(uploaded_file)
 
-                texto_pdf = extraer_texto_pdf(uploaded_file)
-                if texto_pdf == "":
-                    st.error("El PDF no contiene texto legible (es un escaneo).")
-                    st.stop()
+            if texto_pdf == "":
+                st.error("El PDF no contiene texto legible (es un escaneo).")
+                st.stop()
 
-                texto_pdf = texto_pdf[:12000]  # límite seguro
+            texto_pdf = texto_pdf[:15000]  # límite seguro
 
-                modelo_nombre = obtener_modelo_disponible()
-                if not modelo_nombre:
-                    st.error(
-                        "❌ Tu API Key no tiene acceso a modelos generativos de Gemini.\n\n"
-                        "Verifica que la key sea de **Google AI Studio** con Gemini habilitado."
-                    )
-                    st.stop()
+            modelo = obtener_modelo()
+            if not modelo:
+                st.error("No hay modelos Gemini disponibles para tu API key.")
+                st.stop()
 
-                st.info(f"🤖 Usando modelo disponible: `{modelo_nombre}`")
+            st.info(f"🤖 Usando modelo: {modelo}")
+            model = genai.GenerativeModel(model_name=modelo)
 
-                model = genai.GenerativeModel(
-                    model_name=modelo_nombre,
-                    system_instruction=SYSTEM_PROMPT
-                )
+            # ---------------- FASE 1: RESUMEN ----------------
+            st.info("🧠 Generando resumen técnico...")
+            resumen = model.generate_content(
+                textwrap.dedent(f"""
+                {PROMPT_RESUMEN}
 
-                prompt = textwrap.dedent(f"""
                 TEXTO DEL REPORTE:
                 ------------------
                 {texto_pdf}
-                ------------------
+                """),
+                request_options={"timeout": 60}
+            ).text
 
-                Realiza la evaluación completa.
-                """)
+            # ---------------- FASE 2: EVALUACIÓN ----------------
+            st.info("📊 Evaluando con base en el resumen...")
+            evaluacion = model.generate_content(
+                textwrap.dedent(f"""
+                {PROMPT_EVALUACION}
 
-                response = model.generate_content(
-                    prompt,
-                    request_options={"timeout": 60}
-                )
+                RESUMEN TÉCNICO:
+                ----------------
+                {resumen}
+                """),
+                request_options={"timeout": 60}
+            )
 
-                st.success("✅ Evaluación completada")
-                st.markdown(response.text)
+            st.success("✅ Evaluación completada")
+            st.markdown(evaluacion.text)
 
         except Exception as e:
             st.error(f"Error durante la evaluación: {e}")
+
