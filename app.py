@@ -6,28 +6,21 @@ import PyPDF2
 # CONFIGURACIÓN
 # ==========================================
 st.set_page_config(
-    page_title="Revisor Académico de Mantenimiento",
+    page_title="Resumen Técnico de Mantenimiento",
     page_icon="🛠️",
     layout="centered"
 )
 
-st.title("🛠️ Revisor Académico de Mantenimiento")
+st.title("🛠️ Resumen Técnico de Mantenimiento")
 
 genai.configure(api_key=st.secrets["GEMINI_KEY"])
 
-PROMPT = """
-Eres un Revisor Académico de Mantenimiento Industrial.
-
-Evalúa el siguiente texto y entrega SOLO:
-
-1. Tabla de evidencias (Markdown):
-   Criterio | Evidencia | Nivel
-
-2. Calificación final (0–100)
-
-3. 3 observaciones técnicas breves
-
-Sé claro y conciso.
+# ==========================================
+# PROMPT ULTRA SIMPLE
+# ==========================================
+PROMPT_RESUMEN = """
+Resume el siguiente texto técnico de mantenimiento industrial
+en máximo 10 líneas claras y concisas.
 """
 
 # ==========================================
@@ -57,7 +50,7 @@ archivo = st.file_uploader(
 )
 
 if archivo:
-    if st.button("Iniciar Evaluación"):
+    if st.button("Generar resumen"):
         try:
             st.info("📄 Extrayendo texto...")
             texto = extraer_texto_pdf(archivo)
@@ -66,8 +59,8 @@ if archivo:
                 st.error("El PDF no contiene texto legible.")
                 st.stop()
 
-            # 🔒 límite agresivo (clave para velocidad)
-            texto = texto[:8000]
+            # 🔪 RECORTE EXTREMO (CLAVE)
+            texto = texto[:3000]
 
             modelo = obtener_modelo_flash()
             if not modelo:
@@ -75,14 +68,15 @@ if archivo:
                 st.stop()
 
             st.info(f"🤖 Usando modelo rápido: {modelo}")
+
             model = genai.GenerativeModel(model_name=modelo)
 
             respuesta = model.generate_content(
-                f"{PROMPT}\n\nTEXTO:\n{texto}",
-                request_options={"timeout": 40}
+                f"{PROMPT_RESUMEN}\n\nTEXTO:\n{texto}",
+                request_options={"timeout": 20}
             )
 
-            st.success("✅ Evaluación completada")
+            st.success("✅ Resumen generado")
             st.markdown(respuesta.text)
 
         except Exception as e:
