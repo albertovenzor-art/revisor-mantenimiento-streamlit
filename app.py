@@ -16,24 +16,18 @@ st.title("🛠️ Resumen Técnico de Mantenimiento")
 genai.configure(api_key=st.secrets["GEMINI_KEY"])
 
 # ==========================================
-# PROMPT ULTRA SIMPLE
+# FUNCIÓN PDF
 # ==========================================
-PROMPT_RESUMEN = """
-Resume el siguiente texto técnico de mantenimiento industrial
-en máximo 10 líneas claras y concisas.
-"""
-
-# ==========================================
-# FUNCIONES
-# ==========================================
-def extraer_texto_pdf(archivo):
+def extraer_texto_pdf(archivo, max_chars=4000):
     reader = PyPDF2.PdfReader(archivo)
     texto = ""
-    for page in reader.pages:
+    for page in reader.pages[:3]:  # SOLO primeras 3 páginas
         t = page.extract_text()
         if t:
             texto += t + "\n"
-    return texto.strip()
+        if len(texto) >= max_chars:
+            break
+    return texto[:max_chars].strip()
 
 def obtener_modelo_flash():
     for m in genai.list_models():
@@ -52,28 +46,32 @@ archivo = st.file_uploader(
 if archivo:
     if st.button("Generar resumen"):
         try:
-            st.info("📄 Extrayendo texto...")
+            st.info("📄 Extrayendo texto del PDF...")
             texto = extraer_texto_pdf(archivo)
 
             if not texto:
                 st.error("El PDF no contiene texto legible.")
                 st.stop()
 
-            # 🔪 RECORTE EXTREMO (CLAVE)
-            texto = texto[:3000]
-
             modelo = obtener_modelo_flash()
             if not modelo:
                 st.error("No hay modelos Gemini Flash disponibles.")
                 st.stop()
 
-            st.info(f"🤖 Usando modelo rápido: {modelo}")
-
+            st.info(f"🤖 Usando modelo: {modelo}")
             model = genai.GenerativeModel(model_name=modelo)
 
+            prompt = f"""
+            Resume técnicamente el siguiente texto en máximo 5 párrafos.
+            Sé claro, conciso y técnico.
+
+            TEXTO:
+            {texto}
+            """
+
             respuesta = model.generate_content(
-                f"{PROMPT_RESUMEN}\n\nTEXTO:\n{texto}",
-                request_options={"timeout": 20}
+                prompt,
+                request_options={"timeout": 25}
             )
 
             st.success("✅ Resumen generado")
